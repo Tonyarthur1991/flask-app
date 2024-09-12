@@ -35,6 +35,3 @@ def predict():
         'coverage_prediction': coverage_prediction[0],
         'number_prediction': number_prediction[0]
     })
-
-if __name__ == '__main__':
-    app.run(debug=True)
