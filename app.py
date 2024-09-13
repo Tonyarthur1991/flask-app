@@ -43,8 +43,8 @@ def load_and_preprocess_data():
         return False
     
     print("Preprocessing data...")
-    screw_config_encoder = OneHotEncoder(drop='first')
-    screw_config_encoded = screw_config_encoder.fit_transform(data[['Screw_Configuration']]).toarray()
+    screw_config_encoder = OneHotEncoder(drop='first', sparse=False)
+    screw_config_encoded = screw_config_encoder.fit_transform(data[['Screw_Configuration']])
     
     scaler = StandardScaler()
     data[['Screw_speed_norm', 'Liquid_binder_norm', 'Liquid_content_norm']] = scaler.fit_transform(
@@ -119,7 +119,7 @@ def predict():
         screw_config_input = np.array(input_data['screw_config']).reshape(1, -1)
 
         features_scaled = scaler.transform(features)
-        screw_config_encoded = screw_config_encoder.transform(screw_config_input).toarray()
+        screw_config_encoded = screw_config_encoder.transform(screw_config_input)
 
         X_new = np.hstack([features_scaled, screw_config_encoded])
         X_new = np.hstack([
@@ -143,7 +143,18 @@ def predict():
             'coverage_ci': coverage_ci[0].tolist(),
             'number_prediction': number_prediction[0],
             'number_ci': number_ci[0].tolist()
-        })
+ 	})
+ @app.route('/debug_screw_config', methods=['POST'])
+ def debug_screw_config():
+     input_data = request.get_json(force=True)
+     screw_config_input = np.array(input_data['screw_config']).reshape(1, -1)
+     encoded = screw_config_encoder.transform(screw_config_input)
+     return jsonify({
+         "input": screw_config_input.tolist(),
+         "encoded": encoded.tolist(),
+         "categories": screw_config_encoder.categories_
+     })
+       
     except Exception as e:
         print(f"Error during prediction: {str(e)}")
         return jsonify({"error": str(e)}), 500
