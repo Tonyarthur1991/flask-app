@@ -143,7 +143,7 @@ def predict():
             'coverage_ci': coverage_ci[0].tolist(),
             'number_prediction': number_prediction[0],
             'number_ci': number_ci[0].tolist()
- 	})
+
  @app.route('/debug_screw_config', methods=['POST'])
  def debug_screw_config():
      input_data = request.get_json(force=True)
