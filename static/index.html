@@ -84,36 +84,34 @@
 
     <script>
     $(document).ready(function(){
-        $("#predictionForm").submit(function(e){
+    	$("#predictionForm").submit(function(e){
             e.preventDefault();
             var features = [
-                parseFloat($("#screwSpeed").val()),
-                parseFloat($("#liquidBinder").val()),
-                parseFloat($("#liquidContent").val())
+            	parseFloat($("#screwSpeed").val()),
+            	parseFloat($("#liquidBinder").val()),
+            	parseFloat($("#liquidContent").val())
             ];
-            var screwConfig = [$("#screwConfig").val()];
-            
-           $.ajax({
-    		url: '/predict',
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({features: features, screw_config: screwConfig}),
-                success: function(response) {
+            var screwConfig = $("#screwConfig").val(); // Change: removed array brackets
+        
+            $.ajax({
+            	url: '/predict',
+            	type: 'POST',
+            	contentType: 'application/json',
+            	data: JSON.stringify({features: features, screw_config: [screwConfig]}), // Change: added arraybrackets here 
+            	success: function(response) {
                     $("#result").html(
-                        "<h3>Prediction Results:</h3>" +
-                        "<p><strong>Coverage Prediction:</strong> " + response.coverage_prediction.toFixed(2) + "%</p>" +
-                        "<p><strong>Coverage Confidence Interval:</strong> [" + response.coverage_ci[0].toFixed(2) + "%, " + response.coverage_ci[1].toFixed(2) + "%]</p>" +
-                        "<p><strong>Number of Seeded Granules Prediction:</strong> " + response.number_prediction.toFixed(2) + "</p>" +
-                        "<p><strong>Number Confidence Interval:</strong> [" + response.number_ci[0].toFixed(2) + ", " + response.number_ci[1].toFixed(2) + "]</p>"
-                    );
-                },
-                error: function(error) {
+                    	"<h3>Prediction Results:</h3>" +
+                    	"<p><strong>Coverage Prediction:</strong> " + response.coverage_prediction.toFixed(2) + "%</p>" +
+                    	"<p><strong>Coverage Confidence Interval:</strong> [" + response.coverage_ci[0].toFixed(2) + "%, " + response.coverage_ci[1].toFixed(2) + "%]</p>" +
+                    	"<p><strong>Number of Seeded Granules Prediction:</strong> " + response.number_prediction.toFixed(2) + "</p>" +
+                    	"<p><strong>Number Confidence Interval:</strong> [" + response.number_ci[0].toFixed(2) + ", " + response.number_ci[1].toFixed(2) + "]</p>"
+                     );
+            	},
+            	error: function(error) {
                     $("#result").html("<p>Error: Unable to get prediction. Please try again.</p>");
                     console.error("Error:", error);
-                }
+            	}
             });
-        });
+    	});
     });
     </script>
-</body>
-</html>
