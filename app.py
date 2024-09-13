@@ -3,8 +3,9 @@ import sys
 print(f"Python version: {sys.version}")
 print(f"Python path: {sys.executable}")
 
-print("Importing Flask...")
-from flask import Flask, request, jsonify
+print("Importing Flask and related modules...")
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 print("Importing numpy...")
 import numpy as np
 print("Importing pandas...")
@@ -18,6 +19,7 @@ import os
 
 print("Creating Flask app...")
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Global variables for our models and preprocessors
 data = None
@@ -90,6 +92,10 @@ else:
     print("Failed to initialize data and models")
 
 @app.route('/')
+def serve_html():
+    return send_from_directory('static', 'index.html')
+
+@app.route('/api')
 def home():
     return "Welcome to the Flask API! Use the /predict endpoint for predictions."
 
