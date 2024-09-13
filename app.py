@@ -134,30 +134,28 @@ def predict():
 
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_new, lasso_coverage, y_coverage, X_interaction)
         number_prediction, number_ci = predict_with_confidence_intervals(X_new, lasso_number, y_number, X_interaction)
-
         coverage_prediction = np.clip(coverage_prediction, 0, 100)
         coverage_ci = np.clip(coverage_ci, 0, 100)
-
         return jsonify({
             'coverage_prediction': coverage_prediction[0],
             'coverage_ci': coverage_ci[0].tolist(),
             'number_prediction': number_prediction[0],
             'number_ci': number_ci[0].tolist()
-
- @app.route('/debug_screw_config', methods=['POST'])
- def debug_screw_config():
-     input_data = request.get_json(force=True)
-     screw_config_input = np.array(input_data['screw_config']).reshape(1, -1)
-     encoded = screw_config_encoder.transform(screw_config_input)
-     return jsonify({
-         "input": screw_config_input.tolist(),
-         "encoded": encoded.tolist(),
-         "categories": screw_config_encoder.categories_
-     })
-       
+        })
     except Exception as e:
         print(f"Error during prediction: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/debug_screw_config', methods=['POST'])
+def debug_screw_config():
+    input_data = request.get_json(force=True)
+    screw_config_input = np.array(input_data['screw_config']).reshape(1, -1)
+    encoded = screw_config_encoder.transform(screw_config_input)
+    return jsonify({
+        "input": screw_config_input.tolist(),
+        "encoded": encoded.tolist(),
+        "categories": screw_config_encoder.categories_
+    })
 
 if __name__ == '__main__':
     print("Running app in debug mode")
