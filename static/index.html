@@ -60,19 +60,21 @@
     <div class="container">
         <h1>Seed Coverage Predictor</h1>
         <form id="predictionForm">
-            <label for="screwSpeed">Screw Speed:</label>
-            <input type="number" id="screwSpeed" required>
+            <label for="screwSpeed">Screw Speed (rpm):</label>
+	    <input type="number" id="screwSpeed" required>
             
-            <label for="liquidBinder">Liquid Binder:</label>
+            <label for="liquidBinder">Liquid Binder (w/w%):</label>
             <input type="number" id="liquidBinder" required>
             
-            <label for="liquidContent">Liquid Content:</label>
+            <label for="liquidContent">Liquid Content (L/S):</label>
             <input type="number" id="liquidContent" step="0.01" required>
             
             <label for="screwConfig">Screw Configuration:</label>
             <select id="screwConfig">
-                <option value="MS">MS</option>
-                <!-- Add other configurations as needed -->
+                    <option value="MS">MS</option>
+    		    <option value="LS">LS</option>
+    		    <option value="HSS">HSS</option>
+    		    <option value="HSL">HSL</option>
             </select>
             
             <button type="submit">Predict</button>
