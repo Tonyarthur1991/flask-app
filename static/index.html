@@ -5,63 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seed Coverage Predictor</title>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 20px;
-            background-color: #f4f4f4;
-        }
-        .container {
-            max-width: 600px;
-            margin: auto;
-            background: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-        }
-        label {
-            display: block;
-            margin: 10px 0 5px;
-        }
-        input, select {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        #result {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #e7f3fe;
-            border-left: 6px solid #2196F3;
-        }
-    </style>
+    <!-- ... (your existing styles) ... -->
 </head>
 <body>
     <div class="container">
         <h1>Seed Coverage Predictor</h1>
         <form id="predictionForm">
             <label for="screwSpeed">Screw Speed (rpm):</label>
-	    <input type="number" id="screwSpeed" required>
+            <input type="number" id="screwSpeed" required>
             
             <label for="liquidBinder">Liquid Binder (w/w%):</label>
             <input type="number" id="liquidBinder" required>
@@ -71,10 +22,10 @@
             
             <label for="screwConfig">Screw Configuration:</label>
             <select id="screwConfig">
-                    <option value="MS">MS</option>
-    		    <option value="LS">LS</option>
-    		    <option value="HSS">HSS</option>
-    		    <option value="HSL">HSL</option>
+                <option value="MS">MS</option>
+                <option value="LS">LS</option>
+                <option value="HSS">HSS</option>
+                <option value="HSL">HSL</option>
             </select>
             
             <button type="submit">Predict</button>
@@ -84,34 +35,43 @@
 
     <script>
     $(document).ready(function(){
-    	$("#predictionForm").submit(function(e){
+        $("#predictionForm").submit(function(e){
             e.preventDefault();
             var features = [
-            	parseFloat($("#screwSpeed").val()),
-            	parseFloat($("#liquidBinder").val()),
-            	parseFloat($("#liquidContent").val())
+                parseFloat($("#screwSpeed").val()),
+                parseFloat($("#liquidBinder").val()),
+                parseFloat($("#liquidContent").val())
             ];
-            var screwConfig = $("#screwConfig").val(); // Change: removed array brackets
-        
+            var screwConfig = $("#screwConfig").val();
+            
             $.ajax({
-            	url: '/predict',
-            	type: 'POST',
-            	contentType: 'application/json',
-            	data: JSON.stringify({features: features, screw_config: [screwConfig]}), // Change: added arraybrackets here 
-            	success: function(response) {
+                url: '/predict',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({features: features, screw_config: [screwConfig]}),
+                success: function(response) {
                     $("#result").html(
-                    	"<h3>Prediction Results:</h3>" +
-                    	"<p><strong>Coverage Prediction:</strong> " + response.coverage_prediction.toFixed(2) + "%</p>" +
-                    	"<p><strong>Coverage Confidence Interval:</strong> [" + response.coverage_ci[0].toFixed(2) + "%, " + response.coverage_ci[1].toFixed(2) + "%]</p>" +
-                    	"<p><strong>Number of Seeded Granules Prediction:</strong> " + response.number_prediction.toFixed(2) + "</p>" +
-                    	"<p><strong>Number Confidence Interval:</strong> [" + response.number_ci[0].toFixed(2) + ", " + response.number_ci[1].toFixed(2) + "]</p>"
-                     );
-            	},
-            	error: function(error) {
-                    $("#result").html("<p>Error: Unable to get prediction. Please try again.</p>");
-                    console.error("Error:", error);
-            	}
+                        "<h3>Prediction Results:</h3>" +
+                        "<p><strong>Coverage Prediction:</strong> " + response.coverage_prediction.toFixed(2) + "%</p>" +
+                        "<p><strong>Coverage Confidence Interval:</strong> [" + response.coverage_ci[0].toFixed(2) + "%, " + response.coverage_ci[1].toFixed(2) + "%]</p>" +
+                        "<p><strong>Number of Seeded Granules Prediction:</strong> " + response.number_prediction.toFixed(2) + "</p>" +
+                        "<p><strong>Number Confidence Interval:</strong> [" + response.number_ci[0].toFixed(2) + ", " + response.number_ci[1].toFixed(2) + "]</p>"
+                    );
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    console.error("AJAX Error:", textStatus, errorThrown);
+                    var errorMessage = "Error: Unable to get prediction. Please try again.";
+                    if (jqXHR.responseJSON && jqXHR.responseJSON.error) {
+                        errorMessage += "<br>Server message: " + jqXHR.responseJSON.error;
+                        if (jqXHR.responseJSON.error_message) {
+                            errorMessage += "<br>Details: " + jqXHR.responseJSON.error_message;
+                        }
+                    }
+                    $("#result").html("<p>" + errorMessage + "</p>");
+                }
             });
-    	});
+        });
     });
     </script>
+</body>
+</html>
