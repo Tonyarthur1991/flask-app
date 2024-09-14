@@ -1,10 +1,3 @@
-from flask import Flask, request, jsonify, send_from_directory
-import numpy as np
-from sklearn.linear_model import LassoCV
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-
-app = Flask(__name__)
-
 def run_predictions(features, screw_config):
     # Assuming features are Screw_speed, Liquid_content, Liquid_binder
     # Assuming screw_config is a list of one value representing the configuration
@@ -16,17 +9,23 @@ def run_predictions(features, screw_config):
     # One-hot encoding for Screw_Configuration
     ohe = OneHotEncoder(drop='first')
     config_dummies = ohe.fit_transform([[screw_config[0]]]).toarray()
+    
+    # Ensure the shapes match for concatenation
     X = np.hstack((features, config_dummies))
     
     # Add interaction terms and quadratic terms
-    X = np.hstack((X,
-                   X[:, 0] * X[:, 1],
-                   X[:, 0] * X[:, 2],
-                   X[:, 1] * X[:, 2],
-                   X[:, 0]**2,
-                   X[:, 1]**2,
-                   X[:, 2]**2))
+    interactions = np.hstack((
+        X[:, 0] * X[:, 1].reshape(-1, 1),
+        X[:, 0] * X[:, 2].reshape(-1, 1),
+        X[:, 1] * X[:, 2].reshape(-1, 1),
+        X[:, 0]**2,
+        X[:, 1]**2,
+        X[:, 2]**2
+    ))
     
+    # Ensure that all features, including interactions, are concatenated correctly
+    X = np.hstack((X, interactions))
+
     # Dummy Lasso Regression models (normally you'd train these models beforehand)
     coef_coverage = np.random.rand(X.shape[1])
     intercept_coverage = np.random.rand(1)
@@ -48,6 +47,7 @@ def run_predictions(features, screw_config):
         'number_prediction': number_prediction[0],
         'number_ci': [number_ci[0][0], number_ci[1][0]]
     }
+
 
 @app.route('/')
 def index():
