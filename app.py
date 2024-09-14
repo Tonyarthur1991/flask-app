@@ -1,4 +1,4 @@
-Copyprint("Starting app.py")
+print("Starting app.py")
 import sys
 print(f"Python version: {sys.version}")
 print(f"Python path: {sys.executable}")
