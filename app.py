@@ -95,18 +95,6 @@ else:
 def serve_html():
     return send_from_directory('static', 'index.html')
 
-@app.route('/api')
-def home():
-    return "Welcome to the Flask API! Use the /predict endpoint for predictions."
-
-def predict_with_confidence_intervals(X_new, model, y_train, X_train):
-    predictions = model.predict(X_new)
-    residuals = y_train - model.predict(X_train)
-    se_residuals = np.std(residuals)
-    ci_range = 1.96 * se_residuals * np.sqrt(1 + 1 / len(X_train))
-    ci = np.array([predictions - ci_range, predictions + ci_range]).T
-    return predictions, ci
-
 @app.route('/predict', methods=['POST'])
 def predict():
     if not all([data is not None, screw_config_encoder is not None, scaler is not None, 
@@ -159,9 +147,14 @@ def predict():
         print(f"Error during prediction: {str(e)}")
         print(f"Error type: {type(e)}")
         import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
-
+        error_traceback = traceback.format_exc()
+        print(f"Traceback: {error_traceback}")
+        return jsonify({
+            "error": "An error occurred during prediction",
+            "error_message": str(e),
+            "error_type": str(type(e)),
+            "traceback": error_traceback
+        }), 500
 @app.route('/debug_screw_config', methods=['POST'])
 def debug_screw_config():
     input_data = request.get_json(force=True)
