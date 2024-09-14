@@ -1,4 +1,4 @@
-print("Starting app.py")
+Copyprint("Starting app.py")
 import sys
 print(f"Python version: {sys.version}")
 print(f"Python path: {sys.executable}")
@@ -30,6 +30,19 @@ lasso_number = None
 X_interaction = None
 y_coverage = None
 y_number = None
+
+# Add this function definition here
+def predict_with_confidence_intervals(X_new, model, y_train, X_train):
+    predictions = model.predict(X_new)
+    residuals = y_train - model.predict(X_train)
+    se_residuals = np.std(residuals)
+    ci_range = 1.96 * se_residuals * np.sqrt(1 + 1 / len(X_train))
+    ci = np.array([predictions - ci_range, predictions + ci_range]).T
+    return predictions, ci
+
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({"message": "Test route is working"}), 200
 
 def load_and_preprocess_data():
     global data, screw_config_encoder, scaler, X_interaction, y_coverage, y_number
