@@ -55,6 +55,9 @@ def load_and_preprocess_data():
     try:
         data = pd.read_csv('Model_data.csv')
         print(f"Data loaded successfully. Shape: {data.shape}")
+        print(f"Columns: {data.columns}")
+        print(f"Data types: {data.dtypes}")
+        print(f"Sample data:\n{data.head()}")
     except FileNotFoundError:
         print("Error: Model_data.csv not found!")
         return False
@@ -90,6 +93,12 @@ def load_and_preprocess_data():
     model_pipeline_coverage.fit(X_train, y_coverage)
     model_pipeline_number.fit(X_train, y_number)
 
+    # Debug: Check model coefficients
+    print("Coverage model coefficients:")
+    print(model_pipeline_coverage.named_steps['regressor'].coef_)
+    print("Number model coefficients:")
+    print(model_pipeline_number.named_steps['regressor'].coef_)
+
     print("Models trained successfully")
     return True
 
@@ -118,6 +127,18 @@ def predict():
         
         input_df = pd.DataFrame(features, columns=['Screw_speed', 'Liquid_content', 'Liquid_binder'])
         input_df['Screw_Configuration'] = screw_config
+        
+        # Debug: Print intermediate steps
+        print("Input DataFrame:")
+        print(input_df)
+        
+        preprocessed_input = model_pipeline_coverage.named_steps['preprocessor'].transform(input_df)
+        print("Preprocessed input:")
+        print(preprocessed_input)
+        
+        poly_input = model_pipeline_coverage.named_steps['poly'].transform(preprocessed_input)
+        print("Polynomial features:")
+        print(poly_input)
         
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(input_df, model_pipeline_coverage, X_train, y_coverage)
         number_prediction, number_ci = predict_with_confidence_intervals(input_df, model_pipeline_number, X_train, y_number)
