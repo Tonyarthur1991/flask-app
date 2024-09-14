@@ -1,191 +1,71 @@
-import numpy as np
+from flask import Flask, request, jsonify
 import pandas as pd
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import numpy as np
 from sklearn.linear_model import LassoCV
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import cross_val_predict
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
 app = Flask(__name__)
-CORS(app)
 
-# Global variables
-data = None
-model_coverage = None
-model_number = None
-X = None
-y_coverage = None
-y_number = None
-data_means = None
-data_stds = None
-config_categories = None
-
-def load_and_preprocess_data():
-    global data, model_coverage, model_number, X, y_coverage, y_number, data_means, data_stds, config_categories
-    
-    try:
-        data = pd.read_csv('Model_data.csv')
-        print(f"Data loaded successfully. Shape: {data.shape}")
-        print(f"Columns: {data.columns}")
-        print(f"Data types:\n{data.dtypes}")
-        print(f"First few rows:\n{data.head()}")
-    except FileNotFoundError:
-        print("Error: Model_data.csv not found!")
-        return False
-    
+def run_predictions(data):
     # Convert Screw_Configuration to categorical
-    data['Screw_Configuration'] = pd.Categorical(data['Screw_Configuration'])
-    config_categories = data['Screw_Configuration'].cat.categories.tolist()
-    print(f"Screw Configuration categories: {config_categories}")
+    data['Screw_Configuration'] = data['Screw_Configuration'].astype('category')
 
-    # Normalize continuous variables
-    continuous_vars = ['Screw_speed', 'Liquid_content', 'Liquid_binder']
-    data_means = data[continuous_vars].mean()
-    data_stds = data[continuous_vars].std()
-    for var in continuous_vars:
-        data[f'{var}_norm'] = (data[var] - data_means[var]) / data_stds[var]
-    
-    print(f"Means of continuous variables: {data_means}")
-    print(f"Standard deviations of continuous variables: {data_stds}")
+    # Normalizing continuous variables
+    continuous_features = ['Screw_speed', 'Liquid_content', 'Liquid_binder']
+    scaler = StandardScaler()
+    data[continuous_features] = scaler.fit_transform(data[continuous_features])
 
     # Prepare the data for Lasso
-    X = data[['Screw_speed_norm', 'Liquid_content_norm', 'Liquid_binder_norm']]
+    X = data[continuous_features]
     y_coverage = data['Seed_coverage']
     y_number = data['number_seeded']
 
-    # Create dummy variables for Screw_Configuration
-    config_dummies = pd.get_dummies(data['Screw_Configuration'], drop_first=True)
-    X = pd.concat([X, config_dummies], axis=1)
+    # One-hot encoding for Screw_Configuration
+    ohe = OneHotEncoder(drop='first')
+    config_dummies = ohe.fit_transform(data[['Screw_Configuration']]).toarray()
+    X = np.hstack((X, config_dummies))
 
     # Add interaction terms and quadratic terms
-    X['Speed_Content'] = X['Screw_speed_norm'] * X['Liquid_content_norm']
-    X['Speed_Binder'] = X['Screw_speed_norm'] * X['Liquid_binder_norm']
-    X['Content_Binder'] = X['Liquid_content_norm'] * X['Liquid_binder_norm']
-    X['Speed_Squared'] = X['Screw_speed_norm'] ** 2
-    X['Content_Squared'] = X['Liquid_content_norm'] ** 2
-    X['Binder_Squared'] = X['Liquid_binder_norm'] ** 2
+    X = np.hstack((X,
+                   X[:, 0] * X[:, 1].reshape(-1, 1),
+                   X[:, 0] * X[:, 2].reshape(-1, 1),
+                   X[:, 1] * X[:, 2].reshape(-1, 1),
+                   X[:, 0]**2,
+                   X[:, 1]**2,
+                   X[:, 2]**2))
 
-    print(f"X shape after adding all features: {X.shape}")
-    print(f"X columns: {X.columns}")
+    # Apply Lasso Regression for y_coverage
+    lasso_coverage = LassoCV(cv=10).fit(X, y_coverage)
 
-    # Apply Lasso Regression
-    model_coverage = LassoCV(cv=10).fit(X, y_coverage)
-    model_number = LassoCV(cv=10).fit(X, y_number)
+    # Apply Lasso Regression for y_number
+    lasso_number = LassoCV(cv=10).fit(X, y_number)
 
-    print("Models trained successfully")
-    print(f"Coverage model coefficients: {model_coverage.coef_}")
-    print(f"Number model coefficients: {model_number.coef_}")
-    return True
+    # Extract coefficients and intercepts
+    coef_coverage = lasso_coverage.coef_
+    intercept_coverage = lasso_coverage.intercept_
 
-def predict_model_lasso_with_ci(model, X_new, X_train, y_train, is_coverage=False):
-    predictions = model.predict(X_new)
-    y_cv_pred = cross_val_predict(model, X_train, y_train, cv=5)
-    residuals = y_train - y_cv_pred
-    se_residuals = np.std(residuals)
-    n = len(y_train)
-    ci_range = 1.96 * se_residuals * np.sqrt(1 + 1/n)
-    ci = np.array([predictions - ci_range, predictions + ci_range]).T
+    coef_number = lasso_number.coef_
+    intercept_number = lasso_number.intercept_
 
-    if is_coverage:
-        predictions = np.clip(predictions, 0, 100)
-        ci = np.clip(ci, 0, 100)
-    else:
-        predictions = np.maximum(predictions, 0)
-        ci = np.maximum(ci, 0)
-
-    return predictions, ci
-
-if load_and_preprocess_data():
-    print("Data loaded and models trained successfully")
-else:
-    print("Failed to initialize data and models")
-
-@app.route('/')
-def serve_html():
-    return send_from_directory('static', 'index.html')
+    return {
+        'coef_coverage': coef_coverage.tolist(),
+        'intercept_coverage': intercept_coverage,
+        'coef_number': coef_number.tolist(),
+        'intercept_number': intercept_number
+    }
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['file']
     try:
-        input_data = request.get_json(force=True)
-        
-        features = np.array(input_data['features']).reshape(1, -1)
-        screw_config = input_data['screw_config'][0]
-        
-        print(f"Input features: {features}")
-        print(f"Input screw config: {screw_config}")
-        
-        # Normalize new data
-        X_new = (features - data_means.values) / data_stds.values
-        print(f"Normalized input features: {X_new}")
-        
-        # Create dummy variables for Screw_Configuration
-        config_dummy = np.zeros((1, len(config_categories) - 1))
-        if screw_config in config_categories[1:]:
-            config_dummy[0, config_categories[1:].index(screw_config)] = 1
-        
-        X_new = np.hstack([X_new, config_dummy])
-        print(f"X_new after adding config dummy: {X_new}")
-        
-        # Add interaction terms and quadratic terms
-        X_new = np.column_stack([
-            X_new,
-            X_new[:, 0] * X_new[:, 1],  # Speed * Content
-            X_new[:, 0] * X_new[:, 2],  # Speed * Binder
-            X_new[:, 1] * X_new[:, 2],  # Content * Binder
-            X_new[:, 0] ** 2,           # Speed^2
-            X_new[:, 1] ** 2,           # Content^2
-            X_new[:, 2] ** 2            # Binder^2
-        ])
-        
-        print(f"Final X_new shape: {X_new.shape}")
-        print(f"Final X_new: {X_new}")
-        
-        coverage_prediction, coverage_ci = predict_model_lasso_with_ci(model_coverage, X_new, X, y_coverage, is_coverage=True)
-        number_prediction, number_ci = predict_model_lasso_with_ci(model_number, X_new, X, y_number)
-        
-        print(f"Raw coverage prediction: {coverage_prediction}")
-        print(f"Raw coverage CI: {coverage_ci}")
-        print(f"Raw number prediction: {number_prediction}")
-        print(f"Raw number CI: {number_ci}")
-        
-        return jsonify({
-            'coverage_prediction': float(coverage_prediction[0]),
-            'coverage_ci': coverage_ci[0].tolist(),
-            'number_prediction': float(number_prediction[0]),
-            'number_ci': number_ci[0].tolist()
-        })
+        data = pd.read_csv(file)
+        results = run_predictions(data)
+        return jsonify(results)
     except Exception as e:
-        print(f"Error during prediction: {str(e)}")
-        return jsonify({
-            "error": "An error occurred during prediction",
-            "error_message": str(e)
-        }), 500
-
-@app.route('/feature_importance', methods=['GET'])
-def feature_importance():
-    if model_coverage is None or model_number is None:
-        return jsonify({"error": "Models not initialized"}), 500
-    
-    feature_names = X.columns.tolist()
-    
-    coverage_importance = dict(zip(feature_names, model_coverage.coef_))
-    number_importance = dict(zip(feature_names, model_number.coef_))
-    
-    return jsonify({
-        'coverage_importance': coverage_importance,
-        'number_importance': number_importance
-    })
-
-@app.route('/screw_configs', methods=['GET'])
-def get_screw_configs():
-    return jsonify({
-        'screw_configs': config_categories.tolist()
-    })
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
-else:
-    print("App imported, ready to be run by WSGI server")
