@@ -45,7 +45,7 @@ def test():
     return jsonify({"message": "Test route is working"}), 200
 
 def load_and_preprocess_data():
-    global data, screw_config_encoder, scaler, X_interaction, y_coverage, y_number
+    global data, screw_config_encoder, scaler, X_interaction, y_coverage, y_number, num_features
     
     print("Loading data...")
     try:
@@ -65,6 +65,8 @@ def load_and_preprocess_data():
     X = np.hstack([scaled_features, screw_config_encoded])
     y_coverage = data['Seed_coverage'].values
     y_number = data['number_seeded'].values
+    
+    num_features = X.shape[1]
     
     # Include interactions with screw configuration
     X_interaction = X.copy()
@@ -136,7 +138,7 @@ def predict():
         # Create interaction terms
         X_interaction_new = X_new.copy()
         for i in range(3):  # For each continuous feature
-            for j in range(3, X_new.shape[1]):  # For each one-hot encoded feature
+            for j in range(3, num_features):  # Use num_features instead of X_new.shape[1]
                 X_interaction_new = np.column_stack((X_interaction_new, X_new[:, i] * X_new[:, j]))
         
         # Add quadratic terms for continuous features
@@ -168,6 +170,7 @@ def predict():
             "error_type": str(type(e)),
             "traceback": error_traceback
         }), 500
+
 @app.route('/debug_screw_config', methods=['POST'])
 def debug_screw_config():
     input_data = request.get_json(force=True)
