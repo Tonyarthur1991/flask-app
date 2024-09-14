@@ -45,7 +45,7 @@ def test():
     return jsonify({"message": "Test route is working"}), 200
 
 def load_and_preprocess_data():
-    global data, screw_config_encoder, scaler, X_interaction, y_coverage, y_number, num_features
+    global data, screw_config_encoder, scaler, X_interaction, y_coverage, y_number, feature_creation_steps
     
     print("Loading data...")
     try:
@@ -66,17 +66,25 @@ def load_and_preprocess_data():
     y_coverage = data['Seed_coverage'].values
     y_number = data['number_seeded'].values
     
-    num_features = X.shape[1]
+    # Store feature creation steps
+    feature_creation_steps = []
     
     # Include interactions with screw configuration
-    X_interaction = X.copy()
     for i in range(3):  # For each continuous feature
         for j in range(3, X.shape[1]):  # For each one-hot encoded feature
-            X_interaction = np.column_stack((X_interaction, X[:, i] * X[:, j]))
+            feature_creation_steps.append(('interaction', i, j))
     
     # Add quadratic terms for continuous features
     for i in range(3):
-        X_interaction = np.column_stack((X_interaction, X[:, i] ** 2))
+        feature_creation_steps.append(('quadratic', i))
+    
+    # Create X_interaction based on feature_creation_steps
+    X_interaction = X.copy()
+    for step in feature_creation_steps:
+        if step[0] == 'interaction':
+            X_interaction = np.column_stack((X_interaction, X[:, step[1]] * X[:, step[2]]))
+        elif step[0] == 'quadratic':
+            X_interaction = np.column_stack((X_interaction, X[:, step[1]] ** 2))
     
     print(f"X_interaction shape: {X_interaction.shape}")  # Debug print
     print("Data preprocessing completed")
@@ -113,7 +121,7 @@ def serve_html():
 @app.route('/predict', methods=['POST'])
 def predict():
     if not all([data is not None, screw_config_encoder is not None, scaler is not None, 
-                lasso_coverage is not None, lasso_number is not None]):
+                lasso_coverage is not None, lasso_number is not None, feature_creation_steps is not None]):
         return jsonify({"error": "Models not initialized properly"}), 500
     
     try:
@@ -135,15 +143,13 @@ def predict():
         
         print(f"X_new shape: {X_new.shape}")  # Debug print
         
-        # Create interaction terms
+        # Create interaction and quadratic terms using feature_creation_steps
         X_interaction_new = X_new.copy()
-        for i in range(3):  # For each continuous feature
-            for j in range(3, num_features):  # Use num_features instead of X_new.shape[1]
-                X_interaction_new = np.column_stack((X_interaction_new, X_new[:, i] * X_new[:, j]))
-        
-        # Add quadratic terms for continuous features
-        for i in range(3):
-            X_interaction_new = np.column_stack((X_interaction_new, X_new[:, i] ** 2))
+        for step in feature_creation_steps:
+            if step[0] == 'interaction':
+                X_interaction_new = np.column_stack((X_interaction_new, X_new[:, step[1]] * X_new[:, step[2]]))
+            elif step[0] == 'quadratic':
+                X_interaction_new = np.column_stack((X_interaction_new, X_new[:, step[1]] ** 2))
         
         print(f"X_interaction_new shape: {X_interaction_new.shape}")  # Debug print
         print(f"Expected shape based on training: {X_interaction.shape[1]}")  # Debug print
@@ -205,7 +211,14 @@ def feature_importance():
         'coverage_importance': coverage_importance,
         'number_importance': number_importance
     })
-
+@app.route('/debug_shapes', methods=['GET'])
+def debug_shapes():
+    return jsonify({
+        "X_interaction_shape": X_interaction.shape if X_interaction is not None else None,
+        "lasso_coverage_n_features": lasso_coverage.n_features_in_ if lasso_coverage is not None else None,
+        "lasso_number_n_features": lasso_number.n_features_in_ if lasso_number is not None else None,
+        "feature_creation_steps": feature_creation_steps if feature_creation_steps is not None else None
+    })
 if __name__ == '__main__':
     print("Running app in debug mode")
     app.run(debug=True)
