@@ -59,15 +59,7 @@ def load_and_preprocess_data():
     print(f"Preprocessed X sample:\n{X_preprocessed[:5]}")
     
     # Add interaction terms and quadratic terms
-    X_interaction = np.column_stack([
-        X_preprocessed,
-        X_preprocessed[:, 0] * X_preprocessed[:, 1],  # Speed * Content
-        X_preprocessed[:, 0] * X_preprocessed[:, 2],  # Speed * Binder
-        X_preprocessed[:, 1] * X_preprocessed[:, 2],  # Content * Binder
-        X_preprocessed[:, 0] ** 2,                    # Speed^2
-        X_preprocessed[:, 1] ** 2,                    # Content^2
-        X_preprocessed[:, 2] ** 2                     # Binder^2
-    ])
+    X_interaction = add_interaction_terms(X_preprocessed)
     print(f"X_interaction shape: {X_interaction.shape}")
     print(f"X_interaction sample:\n{X_interaction[:5]}")
 
@@ -82,20 +74,23 @@ def load_and_preprocess_data():
     print(f"Number model intercept: {model_number.intercept_}")
     return True
 
+def add_interaction_terms(X):
+    return np.column_stack([
+        X,
+        X[:, 0] * X[:, 1],  # Speed * Content
+        X[:, 0] * X[:, 2],  # Speed * Binder
+        X[:, 1] * X[:, 2],  # Content * Binder
+        X[:, 0] ** 2,       # Speed^2
+        X[:, 1] ** 2,       # Content^2
+        X[:, 2] ** 2        # Binder^2
+    ])
+
 def predict_with_confidence_intervals(model, X_new, X_train, y_train):
     predictions = model.predict(X_new)
     
     # Use the preprocessed X_train for cross-validation
     X_train_preprocessed = preprocessor.transform(X_train)
-    X_train_interaction = np.column_stack([
-        X_train_preprocessed,
-        X_train_preprocessed[:, 0] * X_train_preprocessed[:, 1],
-        X_train_preprocessed[:, 0] * X_train_preprocessed[:, 2],
-        X_train_preprocessed[:, 1] * X_train_preprocessed[:, 2],
-        X_train_preprocessed[:, 0] ** 2,
-        X_train_preprocessed[:, 1] ** 2,
-        X_train_preprocessed[:, 2] ** 2
-    ])
+    X_train_interaction = add_interaction_terms(X_train_preprocessed)
     
     y_cv_pred = cross_val_predict(model, X_train_interaction, y_train, cv=5)
     residuals = y_train - y_cv_pred
@@ -135,27 +130,12 @@ def predict():
         print(f"Preprocessed input: {X_new_preprocessed}")
         
         # Add interaction terms and quadratic terms
-        X_new_interaction = np.column_stack([
-            X_new_preprocessed,
-            X_new_preprocessed[:, 0] * X_new_preprocessed[:, 1],  # Speed * Content
-            X_new_preprocessed[:, 0] * X_new_preprocessed[:, 2],  # Speed * Binder
-            X_new_preprocessed[:, 1] * X_new_preprocessed[:, 2],  # Content * Binder
-            X_new_preprocessed[:, 0] ** 2,                        # Speed^2
-            X_new_preprocessed[:, 1] ** 2,                        # Content^2
-            X_new_preprocessed[:, 2] ** 2                         # Binder^2
-        ])
+        X_new_interaction = add_interaction_terms(X_new_preprocessed)
         
         print(f"Final X_new shape: {X_new_interaction.shape}")
         print(f"Final X_new: {X_new_interaction}")
         
-        # Manual prediction for coverage
-        manual_pred_coverage = model_coverage.predict(X_new_interaction)
-        print(f"Manual prediction for coverage: {manual_pred_coverage}")
-        
-        # Manual prediction for number
-        manual_pred_number = model_number.predict(X_new_interaction)
-        print(f"Manual prediction for number: {manual_pred_number}")
-        
+        # Predictions
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(model_coverage, X_new_interaction, X, y_coverage)
         number_prediction, number_ci = predict_with_confidence_intervals(model_number, X_new_interaction, X, y_number)
         
@@ -163,6 +143,12 @@ def predict():
         print(f"Raw coverage CI: {coverage_ci}")
         print(f"Raw number prediction: {number_prediction}")
         print(f"Raw number CI: {number_ci}")
+        
+        # Clip predictions to reasonable ranges
+        coverage_prediction = np.clip(coverage_prediction, 0, 100)
+        coverage_ci = np.clip(coverage_ci, 0, 100)
+        number_prediction = np.maximum(number_prediction, 0)
+        number_ci = np.maximum(number_ci, 0)
         
         return jsonify({
             'coverage_prediction': float(coverage_prediction[0]),
