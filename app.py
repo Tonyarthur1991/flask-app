@@ -47,23 +47,22 @@ def load_and_preprocess_data():
     screw_config_encoded = screw_config_encoder.fit_transform(data[['Screw_Configuration']])
     
     scaler = StandardScaler()
-    data[['Screw_speed_norm', 'Liquid_binder_norm', 'Liquid_content_norm']] = scaler.fit_transform(
-        data[['Screw_speed', 'Liquid_binder', 'Liquid_content']]
-    )
+    scaled_features = scaler.fit_transform(data[['Screw_speed', 'Liquid_binder', 'Liquid_content']])
     
-    X = np.hstack([data[['Screw_speed_norm', 'Liquid_binder_norm', 'Liquid_content_norm']].values, screw_config_encoded])
+    X = np.hstack([scaled_features, screw_config_encoded])
     y_coverage = data['Seed_coverage'].values
     y_number = data['number_seeded'].values
     
-    X_interaction = np.hstack([
-        X,
-        (X[:, 0] * X[:, 1]).reshape(-1, 1),
-        (X[:, 0] * X[:, 2]).reshape(-1, 1),
-        (X[:, 1] * X[:, 2]).reshape(-1, 1),
-        (X[:, 0] ** 2).reshape(-1, 1),
-        (X[:, 1] ** 2).reshape(-1, 1),
-        (X[:, 2] ** 2).reshape(-1, 1)
-    ])
+    # Include interactions with screw configuration
+    X_interaction = X.copy()
+    for i in range(3):  # For each continuous feature
+        for j in range(3, X.shape[1]):  # For each one-hot encoded feature
+            X_interaction = np.column_stack((X_interaction, X[:, i] * X[:, j]))
+    
+    # Add quadratic terms for continuous features
+    for i in range(3):
+        X_interaction = np.column_stack((X_interaction, X[:, i] ** 2))
+    
     print("Data preprocessing completed")
     return True
 
@@ -122,18 +121,19 @@ def predict():
         screw_config_encoded = screw_config_encoder.transform(screw_config_input)
 
         X_new = np.hstack([features_scaled, screw_config_encoded])
-        X_new = np.hstack([
-            X_new,
-            (X_new[:, 0] * X_new[:, 1]).reshape(-1, 1),
-            (X_new[:, 0] * X_new[:, 2]).reshape(-1, 1),
-            (X_new[:, 1] * X_new[:, 2]).reshape(-1, 1),
-            (X_new[:, 0] ** 2).reshape(-1, 1),
-            (X_new[:, 1] ** 2).reshape(-1, 1),
-            (X_new[:, 2] ** 2).reshape(-1, 1)
-        ])
+        
+        # Create interaction terms
+        X_interaction_new = X_new.copy()
+        for i in range(3):  # For each continuous feature
+            for j in range(3, X_new.shape[1]):  # For each one-hot encoded feature
+                X_interaction_new = np.column_stack((X_interaction_new, X_new[:, i] * X_new[:, j]))
+        
+        # Add quadratic terms for continuous features
+        for i in range(3):
+            X_interaction_new = np.column_stack((X_interaction_new, X_new[:, i] ** 2))
 
-        coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_new, lasso_coverage, y_coverage, X_interaction)
-        number_prediction, number_ci = predict_with_confidence_intervals(X_new, lasso_number, y_number, X_interaction)
+        coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_interaction_new, lasso_coverage, y_coverage, X_interaction)
+        number_prediction, number_ci = predict_with_confidence_intervals(X_interaction_new, lasso_number, y_number, X_interaction)
         coverage_prediction = np.clip(coverage_prediction, 0, 100)
         coverage_ci = np.clip(coverage_ci, 0, 100)
         return jsonify({
@@ -155,6 +155,30 @@ def debug_screw_config():
         "input": screw_config_input.tolist(),
         "encoded": encoded.tolist(),
         "categories": screw_config_encoder.categories_
+    })
+
+@app.route('/feature_importance', methods=['GET'])
+def feature_importance():
+    if lasso_coverage is None or lasso_number is None:
+        return jsonify({"error": "Models not initialized"}), 500
+    
+    feature_names = ['Screw_speed', 'Liquid_binder', 'Liquid_content'] + [f'Screw_Config_{cat}' for cat in screw_config_encoder.categories_[0][1:]]
+    
+    # Add interaction term names
+    for i, name1 in enumerate(feature_names[:3]):
+        for name2 in feature_names[3:]:
+            feature_names.append(f'{name1} * {name2}')
+    
+    # Add quadratic term names
+    for name in feature_names[:3]:
+        feature_names.append(f'{name}^2')
+    
+    coverage_importance = dict(zip(feature_names, lasso_coverage.coef_))
+    number_importance = dict(zip(feature_names, lasso_number.coef_))
+    
+    return jsonify({
+        'coverage_importance': coverage_importance,
+        'number_importance': number_importance
     })
 
 if __name__ == '__main__':
