@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.model_selection import cross_val_predict
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
 import joblib
 import os
 
@@ -21,15 +22,22 @@ model_pipeline_number = None
 y_coverage = None
 y_number = None
 
-def create_polynomial_features(X):
-    poly_features = np.column_stack([
-        X,
-        X[:, :3] ** 2,
-        np.prod(X[:, :2], axis=1).reshape(-1, 1),
-        np.prod(X[:, [0, 2]], axis=1).reshape(-1, 1),
-        np.prod(X[:, 1:3], axis=1).reshape(-1, 1)
-    ])
-    return poly_features
+class PolynomialFeatures(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        numeric_cols = X[:, :3]
+        categorical_cols = X[:, 3:]
+        poly_features = np.column_stack([
+            numeric_cols,
+            numeric_cols ** 2,
+            np.prod(numeric_cols[:, :2], axis=1).reshape(-1, 1),
+            np.prod(numeric_cols[:, [0, 2]], axis=1).reshape(-1, 1),
+            np.prod(numeric_cols[:, 1:3], axis=1).reshape(-1, 1),
+            categorical_cols
+        ])
+        return poly_features
 
 def predict_with_confidence_intervals(X_new, model, y_train):
     y_pred = model.predict(X_new)
@@ -63,13 +71,13 @@ def load_and_preprocess_data():
 
     model_pipeline_coverage = Pipeline([
         ('preprocessor', preprocessor),
-        ('poly', lambda X: create_polynomial_features(X)),
+        ('poly', PolynomialFeatures()),
         ('regressor', Ridge(alpha=1.0))
     ])
 
     model_pipeline_number = Pipeline([
         ('preprocessor', preprocessor),
-        ('poly', lambda X: create_polynomial_features(X)),
+        ('poly', PolynomialFeatures()),
         ('regressor', Ridge(alpha=1.0))
     ])
 
