@@ -3,7 +3,7 @@ import pandas as pd
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LassoCV
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import cross_val_predict
 
 app = Flask(__name__)
@@ -18,16 +18,15 @@ y_coverage = None
 y_number = None
 scaler = None
 config_categories = None
-data_means = None
-data_stds = None
 
 def load_and_preprocess_data():
-    global data, model_coverage, model_number, X, y_coverage, y_number, scaler, config_categories, data_means, data_stds
+    global data, model_coverage, model_number, X, y_coverage, y_number, scaler, config_categories
     
     try:
         data = pd.read_csv('Model_data.csv')
         print(f"Data loaded successfully. Shape: {data.shape}")
         print(f"Data summary:\n{data.describe()}")
+        print(f"Data sample:\n{data.head()}")
     except FileNotFoundError:
         print("Error: Model_data.csv not found!")
         return False
@@ -38,32 +37,24 @@ def load_and_preprocess_data():
     print(f"Screw Configuration categories: {config_categories}")
 
     # Prepare the data
-    X = data[['Screw_speed', 'Liquid_content', 'Liquid_binder']]
+    X_numeric = data[['Screw_speed', 'Liquid_content', 'Liquid_binder']]
     y_coverage = data['Seed_coverage']
     y_number = data['number_seeded']
 
     # Scale the features
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = scaler.fit_transform(X_numeric)
+    print(f"Scaled X sample:\n{X_scaled[:5]}")
     
     # Create dummy variables for Screw_Configuration
     config_dummies = pd.get_dummies(data['Screw_Configuration'], drop_first=True)
-    X_final = np.hstack([X_scaled, config_dummies])
+    X = np.hstack([X_scaled, config_dummies])
+    print(f"Final X shape: {X.shape}")
+    print(f"Final X sample:\n{X[:5]}")
 
-    # Add interaction terms and quadratic terms
-    X_final = np.column_stack([
-        X_final,
-        X_scaled[:, 0] * X_scaled[:, 1],  # Speed * Content
-        X_scaled[:, 0] * X_scaled[:, 2],  # Speed * Binder
-        X_scaled[:, 1] * X_scaled[:, 2],  # Content * Binder
-        X_scaled[:, 0] ** 2,              # Speed^2
-        X_scaled[:, 1] ** 2,              # Content^2
-        X_scaled[:, 2] ** 2               # Binder^2
-    ])
-
-    # Apply Lasso Regression
-    model_coverage = LassoCV(cv=10).fit(X_final, y_coverage)
-    model_number = LassoCV(cv=10).fit(X_final, y_number)
+    # Train models
+    model_coverage = LinearRegression().fit(X, y_coverage)
+    model_number = LinearRegression().fit(X, y_number)
 
     print("Models trained successfully")
     print(f"Coverage model coefficients: {model_coverage.coef_}")
@@ -112,6 +103,7 @@ def predict():
         
         # Scale the input features
         X_new_scaled = scaler.transform(features)
+        print(f"Scaled input features: {X_new_scaled}")
         
         # Create dummy variables for Screw_Configuration
         config_dummy = np.zeros((1, len(config_categories) - 1))
@@ -119,18 +111,6 @@ def predict():
             config_dummy[0, config_categories[1:].index(screw_config)] = 1
         
         X_new = np.hstack([X_new_scaled, config_dummy])
-        
-        # Add interaction terms and quadratic terms
-        X_new = np.column_stack([
-            X_new,
-            X_new_scaled[:, 0] * X_new_scaled[:, 1],  # Speed * Content
-            X_new_scaled[:, 0] * X_new_scaled[:, 2],  # Speed * Binder
-            X_new_scaled[:, 1] * X_new_scaled[:, 2],  # Content * Binder
-            X_new_scaled[:, 0] ** 2,                  # Speed^2
-            X_new_scaled[:, 1] ** 2,                  # Content^2
-            X_new_scaled[:, 2] ** 2                   # Binder^2
-        ])
-        
         print(f"Preprocessed input: {X_new}")
         
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(model_coverage, X_new, X, y_coverage, is_coverage=True)
@@ -160,10 +140,6 @@ def feature_importance():
         return jsonify({"error": "Models not initialized"}), 500
     
     feature_names = ['Screw_speed', 'Liquid_content', 'Liquid_binder'] + [f'Screw_Config_{cat}' for cat in config_categories[1:]]
-    feature_names += [
-        'Speed * Content', 'Speed * Binder', 'Content * Binder',
-        'Speed^2', 'Content^2', 'Binder^2'
-    ]
     
     coverage_importance = dict(zip(feature_names, model_coverage.coef_))
     number_importance = dict(zip(feature_names, model_number.coef_))
