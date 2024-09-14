@@ -22,6 +22,7 @@ model_pipeline_number = None
 y_coverage = None
 y_number = None
 X_train = None
+screw_config_categories = None
 
 class PolynomialFeatures(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None):
@@ -49,7 +50,7 @@ def predict_with_confidence_intervals(X_new, model, X_train, y_train):
     return y_pred, np.array([y_pred - ci, y_pred + ci]).T
 
 def load_and_preprocess_data():
-    global data, model_pipeline_coverage, model_pipeline_number, y_coverage, y_number, X_train
+    global data, model_pipeline_coverage, model_pipeline_number, y_coverage, y_number, X_train, screw_config_categories
     
     try:
         data = pd.read_csv('Model_data.csv')
@@ -64,10 +65,13 @@ def load_and_preprocess_data():
     numeric_features = ['Screw_speed', 'Liquid_content', 'Liquid_binder']
     categorical_features = ['Screw_Configuration']
 
+    screw_config_categories = data['Screw_Configuration'].unique().tolist()
+    print(f"Screw configurations in training data: {screw_config_categories}")
+
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', StandardScaler(), numeric_features),
-            ('cat', OneHotEncoder(drop='first', sparse_output=False), categorical_features)
+            ('cat', OneHotEncoder(drop='first', sparse_output=False, handle_unknown='ignore'), categorical_features)
         ])
 
     model_pipeline_coverage = Pipeline([
@@ -108,6 +112,9 @@ def predict():
         
         print(f"Input features: {features}")
         print(f"Input screw config: {screw_config}")
+        
+        if screw_config not in screw_config_categories:
+            print(f"Warning: Unknown screw configuration '{screw_config}'. Using default encoding.")
         
         input_df = pd.DataFrame(features, columns=['Screw_speed', 'Liquid_content', 'Liquid_binder'])
         input_df['Screw_Configuration'] = screw_config
@@ -162,6 +169,12 @@ def feature_importance():
     return jsonify({
         'coverage_importance': coverage_importance,
         'number_importance': number_importance
+    })
+
+@app.route('/screw_configs', methods=['GET'])
+def get_screw_configs():
+    return jsonify({
+        'screw_configs': screw_config_categories
     })
 
 if __name__ == '__main__':
