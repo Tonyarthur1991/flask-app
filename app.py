@@ -63,6 +63,7 @@ def load_and_preprocess_data():
     for i in range(3):
         X_interaction = np.column_stack((X_interaction, X[:, i] ** 2))
     
+    print(f"X_interaction shape: {X_interaction.shape}")  # Debug print
     print("Data preprocessing completed")
     return True
 
@@ -142,6 +143,7 @@ def predict():
             X_interaction_new = np.column_stack((X_interaction_new, X_new[:, i] ** 2))
         
         print(f"X_interaction_new shape: {X_interaction_new.shape}")  # Debug print
+        print(f"Expected shape based on training: {X_interaction.shape[1]}")  # Debug print
 
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_interaction_new, lasso_coverage, y_coverage, X_interaction)
         number_prediction, number_ci = predict_with_confidence_intervals(X_interaction_new, lasso_number, y_number, X_interaction)
