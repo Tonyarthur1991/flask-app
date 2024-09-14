@@ -114,13 +114,22 @@ def predict():
     
     try:
         input_data = request.get_json(force=True)
+        print(f"Received input data: {input_data}")  # Debug print
+        
         features = np.array(input_data['features']).reshape(1, -1)
         screw_config_input = np.array(input_data['screw_config']).reshape(1, -1)
+        
+        print(f"Features shape: {features.shape}")  # Debug print
+        print(f"Screw config input: {screw_config_input}")  # Debug print
 
         features_scaled = scaler.transform(features)
         screw_config_encoded = screw_config_encoder.transform(screw_config_input)
+        
+        print(f"Encoded screw config shape: {screw_config_encoded.shape}")  # Debug print
 
         X_new = np.hstack([features_scaled, screw_config_encoded])
+        
+        print(f"X_new shape: {X_new.shape}")  # Debug print
         
         # Create interaction terms
         X_interaction_new = X_new.copy()
@@ -131,6 +140,8 @@ def predict():
         # Add quadratic terms for continuous features
         for i in range(3):
             X_interaction_new = np.column_stack((X_interaction_new, X_new[:, i] ** 2))
+        
+        print(f"X_interaction_new shape: {X_interaction_new.shape}")  # Debug print
 
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_interaction_new, lasso_coverage, y_coverage, X_interaction)
         number_prediction, number_ci = predict_with_confidence_intervals(X_interaction_new, lasso_number, y_number, X_interaction)
@@ -144,6 +155,9 @@ def predict():
         })
     except Exception as e:
         print(f"Error during prediction: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/debug_screw_config', methods=['POST'])
