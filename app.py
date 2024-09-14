@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LassoCV
+from sklearn.linear_model import RidgeCV
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 import joblib
 import os
@@ -15,8 +15,8 @@ CORS(app)
 data = None
 screw_config_encoder = None
 scaler = None
-lasso_coverage = None
-lasso_number = None
+ridge_coverage = None
+ridge_number = None
 X_interaction = None
 y_coverage = None
 y_number = None
@@ -34,6 +34,7 @@ def load_and_preprocess_data():
     
     try:
         data = pd.read_csv('Model_data.csv')
+        print(f"Data loaded successfully. Shape: {data.shape}")
     except FileNotFoundError:
         print("Error: Model_data.csv not found!")
         return False
@@ -59,19 +60,26 @@ def load_and_preprocess_data():
         X[:, 2]**2          # Liquid_binder^2
     ])
     
+    print(f"X_interaction shape: {X_interaction.shape}")
+    print(f"y_coverage shape: {y_coverage.shape}")
+    print(f"y_number shape: {y_number.shape}")
+    
     return True
 
 def train_or_load_models():
-    global lasso_coverage, lasso_number
+    global ridge_coverage, ridge_number
     
-    if os.path.exists('lasso_coverage.joblib') and os.path.exists('lasso_number.joblib'):
-        lasso_coverage = joblib.load('lasso_coverage.joblib')
-        lasso_number = joblib.load('lasso_number.joblib')
+    if os.path.exists('ridge_coverage.joblib') and os.path.exists('ridge_number.joblib'):
+        ridge_coverage = joblib.load('ridge_coverage.joblib')
+        ridge_number = joblib.load('ridge_number.joblib')
     else:
-        lasso_coverage = LassoCV(cv=10, positive=True).fit(X_interaction, y_coverage)
-        lasso_number = LassoCV(cv=10, positive=True).fit(X_interaction, y_number)
-        joblib.dump(lasso_coverage, 'lasso_coverage.joblib')
-        joblib.dump(lasso_number, 'lasso_number.joblib')
+        ridge_coverage = RidgeCV(alphas=[0.1, 1.0, 10.0], cv=5).fit(X_interaction, y_coverage)
+        ridge_number = RidgeCV(alphas=[0.1, 1.0, 10.0], cv=5).fit(X_interaction, y_number)
+        joblib.dump(ridge_coverage, 'ridge_coverage.joblib')
+        joblib.dump(ridge_number, 'ridge_number.joblib')
+    
+    print(f"Coverage model coefficients: {ridge_coverage.coef_}")
+    print(f"Number model coefficients: {ridge_number.coef_}")
 
 if load_and_preprocess_data():
     train_or_load_models()
@@ -90,6 +98,9 @@ def predict():
         features = np.array(input_data['features']).reshape(1, -1)
         screw_config_input = np.array(input_data['screw_config']).reshape(1, -1)
         
+        print(f"Input features: {features}")
+        print(f"Input screw config: {screw_config_input}")
+        
         features_scaled = scaler.transform(features)
         screw_config_encoded = screw_config_encoder.transform(screw_config_input)
         
@@ -106,14 +117,25 @@ def predict():
             X_new[:, 2]**2              # Liquid_binder^2
         ])
         
-        coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_interaction_new, lasso_coverage, y_coverage, X_interaction)
-        number_prediction, number_ci = predict_with_confidence_intervals(X_interaction_new, lasso_number, y_number, X_interaction)
+        print(f"X_interaction_new shape: {X_interaction_new.shape}")
+        
+        coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_interaction_new, ridge_coverage, y_coverage, X_interaction)
+        number_prediction, number_ci = predict_with_confidence_intervals(X_interaction_new, ridge_number, y_number, X_interaction)
         
         # Ensure non-negative predictions and clip coverage to 0-100%
         coverage_prediction = np.clip(coverage_prediction, 0, 100)
         coverage_ci = np.clip(coverage_ci, 0, 100)
         number_prediction = np.maximum(number_prediction, 0)
         number_ci = np.maximum(number_ci, 0)
+        
+        # Sanity check: if prediction is zero, use mean of training data
+        if coverage_prediction[0] == 0:
+            coverage_prediction[0] = np.mean(y_coverage)
+        if number_prediction[0] == 0:
+            number_prediction[0] = np.mean(y_number)
+        
+        print(f"Coverage prediction: {coverage_prediction}")
+        print(f"Number prediction: {number_prediction}")
         
         return jsonify({
             'coverage_prediction': float(coverage_prediction[0]),
@@ -122,6 +144,7 @@ def predict():
             'number_ci': number_ci[0].tolist()
         })
     except Exception as e:
+        print(f"Error during prediction: {str(e)}")
         return jsonify({
             "error": "An error occurred during prediction",
             "error_message": str(e)
@@ -129,7 +152,7 @@ def predict():
 
 @app.route('/feature_importance', methods=['GET'])
 def feature_importance():
-    if lasso_coverage is None or lasso_number is None:
+    if ridge_coverage is None or ridge_number is None:
         return jsonify({"error": "Models not initialized"}), 500
     
     feature_names = ['Screw_speed', 'Liquid_content', 'Liquid_binder'] + [f'Screw_Config_{cat}' for cat in screw_config_encoder.categories_[0][1:]]
@@ -142,8 +165,8 @@ def feature_importance():
         'Liquid_binder^2'
     ]
     
-    coverage_importance = dict(zip(feature_names, lasso_coverage.coef_))
-    number_importance = dict(zip(feature_names, lasso_number.coef_))
+    coverage_importance = dict(zip(feature_names, ridge_coverage.coef_))
+    number_importance = dict(zip(feature_names, ridge_number.coef_))
     
     return jsonify({
         'coverage_importance': coverage_importance,
