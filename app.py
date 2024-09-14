@@ -27,6 +27,7 @@ def load_and_preprocess_data():
     try:
         data = pd.read_csv('Model_data.csv')
         print(f"Data loaded successfully. Shape: {data.shape}")
+        print(f"Data summary:\n{data.describe()}")
     except FileNotFoundError:
         print("Error: Model_data.csv not found!")
         return False
@@ -36,33 +37,33 @@ def load_and_preprocess_data():
     config_categories = data['Screw_Configuration'].cat.categories.tolist()
     print(f"Screw Configuration categories: {config_categories}")
 
-    # Normalize continuous variables
-    continuous_vars = ['Screw_speed', 'Liquid_content', 'Liquid_binder']
-    data_means = data[continuous_vars].mean()
-    data_stds = data[continuous_vars].std()
-    for var in continuous_vars:
-        data[f'{var}_norm'] = (data[var] - data_means[var]) / data_stds[var]
-
-    # Prepare the data for Lasso
-    X = data[['Screw_speed_norm', 'Liquid_content_norm', 'Liquid_binder_norm']]
+    # Prepare the data
+    X = data[['Screw_speed', 'Liquid_content', 'Liquid_binder']]
     y_coverage = data['Seed_coverage']
     y_number = data['number_seeded']
 
+    # Scale the features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
     # Create dummy variables for Screw_Configuration
     config_dummies = pd.get_dummies(data['Screw_Configuration'], drop_first=True)
-    X = pd.concat([X, config_dummies], axis=1)
+    X_final = np.hstack([X_scaled, config_dummies])
 
     # Add interaction terms and quadratic terms
-    X['Speed_Content'] = X['Screw_speed_norm'] * X['Liquid_content_norm']
-    X['Speed_Binder'] = X['Screw_speed_norm'] * X['Liquid_binder_norm']
-    X['Content_Binder'] = X['Liquid_content_norm'] * X['Liquid_binder_norm']
-    X['Speed_Squared'] = X['Screw_speed_norm'] ** 2
-    X['Content_Squared'] = X['Liquid_content_norm'] ** 2
-    X['Binder_Squared'] = X['Liquid_binder_norm'] ** 2
+    X_final = np.column_stack([
+        X_final,
+        X_scaled[:, 0] * X_scaled[:, 1],  # Speed * Content
+        X_scaled[:, 0] * X_scaled[:, 2],  # Speed * Binder
+        X_scaled[:, 1] * X_scaled[:, 2],  # Content * Binder
+        X_scaled[:, 0] ** 2,              # Speed^2
+        X_scaled[:, 1] ** 2,              # Content^2
+        X_scaled[:, 2] ** 2               # Binder^2
+    ])
 
     # Apply Lasso Regression
-    model_coverage = LassoCV(cv=10).fit(X, y_coverage)
-    model_number = LassoCV(cv=10).fit(X, y_number)
+    model_coverage = LassoCV(cv=10).fit(X_final, y_coverage)
+    model_number = LassoCV(cv=10).fit(X_final, y_number)
 
     print("Models trained successfully")
     print(f"Coverage model coefficients: {model_coverage.coef_}")
@@ -109,25 +110,25 @@ def predict():
         print(f"Input features: {features}")
         print(f"Input screw config: {screw_config}")
         
-        # Normalize new data
-        X_new = (features - data_means.values) / data_stds.values
+        # Scale the input features
+        X_new_scaled = scaler.transform(features)
         
         # Create dummy variables for Screw_Configuration
         config_dummy = np.zeros((1, len(config_categories) - 1))
         if screw_config in config_categories[1:]:
             config_dummy[0, config_categories[1:].index(screw_config)] = 1
         
-        X_new = np.hstack([X_new, config_dummy])
+        X_new = np.hstack([X_new_scaled, config_dummy])
         
         # Add interaction terms and quadratic terms
         X_new = np.column_stack([
             X_new,
-            X_new[:, 0] * X_new[:, 1],  # Speed * Content
-            X_new[:, 0] * X_new[:, 2],  # Speed * Binder
-            X_new[:, 1] * X_new[:, 2],  # Content * Binder
-            X_new[:, 0] ** 2,           # Speed^2
-            X_new[:, 1] ** 2,           # Content^2
-            X_new[:, 2] ** 2            # Binder^2
+            X_new_scaled[:, 0] * X_new_scaled[:, 1],  # Speed * Content
+            X_new_scaled[:, 0] * X_new_scaled[:, 2],  # Speed * Binder
+            X_new_scaled[:, 1] * X_new_scaled[:, 2],  # Content * Binder
+            X_new_scaled[:, 0] ** 2,                  # Speed^2
+            X_new_scaled[:, 1] ** 2,                  # Content^2
+            X_new_scaled[:, 2] ** 2                   # Binder^2
         ])
         
         print(f"Preprocessed input: {X_new}")
