@@ -27,6 +27,9 @@ def load_and_preprocess_data():
     try:
         data = pd.read_csv('Model_data.csv')
         print(f"Data loaded successfully. Shape: {data.shape}")
+        print(f"Columns: {data.columns}")
+        print(f"Data types:\n{data.dtypes}")
+        print(f"First few rows:\n{data.head()}")
     except FileNotFoundError:
         print("Error: Model_data.csv not found!")
         return False
@@ -52,6 +55,8 @@ def load_and_preprocess_data():
 
     # Fit preprocessor and transform data
     X_preprocessed = preprocessor.fit_transform(X)
+    print(f"Preprocessed X shape: {X_preprocessed.shape}")
+    print(f"Preprocessed X sample:\n{X_preprocessed[:5]}")
     
     # Add interaction terms and quadratic terms
     X_interaction = np.column_stack([
@@ -63,12 +68,18 @@ def load_and_preprocess_data():
         X_preprocessed[:, 1] ** 2,                    # Content^2
         X_preprocessed[:, 2] ** 2                     # Binder^2
     ])
+    print(f"X_interaction shape: {X_interaction.shape}")
+    print(f"X_interaction sample:\n{X_interaction[:5]}")
 
     # Train models
     model_coverage = LinearRegression().fit(X_interaction, y_coverage)
     model_number = LinearRegression().fit(X_interaction, y_number)
 
     print("Models trained successfully")
+    print(f"Coverage model coefficients: {model_coverage.coef_}")
+    print(f"Coverage model intercept: {model_coverage.intercept_}")
+    print(f"Number model coefficients: {model_number.coef_}")
+    print(f"Number model intercept: {model_number.intercept_}")
     return True
 
 def predict_with_confidence_intervals(model, X_new, X_train, y_train, is_coverage=False):
@@ -145,11 +156,11 @@ def predict():
         print(f"Final X_new: {X_new_interaction}")
         
         # Manual prediction for coverage
-        manual_pred_coverage = np.dot(X_new_interaction, model_coverage.coef_) + model_coverage.intercept_
+        manual_pred_coverage = model_coverage.predict(X_new_interaction)
         print(f"Manual prediction for coverage: {manual_pred_coverage}")
         
         # Manual prediction for number
-        manual_pred_number = np.dot(X_new_interaction, model_number.coef_) + model_number.intercept_
+        manual_pred_number = model_number.predict(X_new_interaction)
         print(f"Manual prediction for number: {manual_pred_number}")
         
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(model_coverage, X_new_interaction, X, y_coverage, is_coverage=True)
