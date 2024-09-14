@@ -43,7 +43,7 @@ def load_and_preprocess_data():
         return False
     
     print("Preprocessing data...")
-    screw_config_encoder = OneHotEncoder(drop='first', sparse=False)
+    screw_config_encoder = OneHotEncoder(drop='first', sparse_output=False)
     screw_config_encoded = screw_config_encoder.fit_transform(data[['Screw_Configuration']])
     
     scaler = StandardScaler()
