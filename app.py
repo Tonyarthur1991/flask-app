@@ -3,7 +3,7 @@ import pandas as pd
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Ridge
 from sklearn.model_selection import cross_val_predict
 
 app = Flask(__name__)
@@ -52,9 +52,9 @@ def load_and_preprocess_data():
     print(f"Final X shape: {X.shape}")
     print(f"Final X sample:\n{X[:5]}")
 
-    # Train models
-    model_coverage = LinearRegression().fit(X, y_coverage)
-    model_number = LinearRegression().fit(X, y_number)
+    # Train models with Ridge regression
+    model_coverage = Ridge(alpha=1.0).fit(X, y_coverage)
+    model_number = Ridge(alpha=1.0).fit(X, y_number)
 
     print("Models trained successfully")
     print(f"Coverage model coefficients: {model_coverage.coef_}")
