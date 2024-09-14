@@ -27,9 +27,6 @@ def load_and_preprocess_data():
     try:
         data = pd.read_csv('Model_data.csv')
         print(f"Data loaded successfully. Shape: {data.shape}")
-        print(f"Columns: {data.columns}")
-        print(f"Data types:\n{data.dtypes}")
-        print(f"First few rows:\n{data.head()}")
     except FileNotFoundError:
         print("Error: Model_data.csv not found!")
         return False
@@ -72,15 +69,24 @@ def load_and_preprocess_data():
     model_number = LinearRegression().fit(X_interaction, y_number)
 
     print("Models trained successfully")
-    print(f"Coverage model coefficients: {model_coverage.coef_}")
-    print(f"Coverage model intercept: {model_coverage.intercept_}")
-    print(f"Number model coefficients: {model_number.coef_}")
-    print(f"Number model intercept: {model_number.intercept_}")
     return True
 
 def predict_with_confidence_intervals(model, X_new, X_train, y_train, is_coverage=False):
     predictions = model.predict(X_new)
-    y_cv_pred = cross_val_predict(model, X_train, y_train, cv=5)
+    
+    # Use the preprocessed X_train for cross-validation
+    X_train_preprocessed = preprocessor.transform(X_train)
+    X_train_interaction = np.column_stack([
+        X_train_preprocessed,
+        X_train_preprocessed[:, 0] * X_train_preprocessed[:, 1],
+        X_train_preprocessed[:, 0] * X_train_preprocessed[:, 2],
+        X_train_preprocessed[:, 1] * X_train_preprocessed[:, 2],
+        X_train_preprocessed[:, 0] ** 2,
+        X_train_preprocessed[:, 1] ** 2,
+        X_train_preprocessed[:, 2] ** 2
+    ])
+    
+    y_cv_pred = cross_val_predict(model, X_train_interaction, y_train, cv=5)
     residuals = y_train - y_cv_pred
     se_residuals = np.std(residuals)
     n = len(y_train)
