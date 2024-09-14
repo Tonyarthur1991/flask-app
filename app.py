@@ -3,8 +3,11 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import RidgeCV
+from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import cross_val_predict
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 import joblib
 import os
 
@@ -13,24 +16,31 @@ CORS(app)
 
 # Global variables
 data = None
-screw_config_encoder = None
-scaler = None
-ridge_coverage = None
-ridge_number = None
-X_interaction = None
+model_pipeline_coverage = None
+model_pipeline_number = None
 y_coverage = None
 y_number = None
 
-def predict_with_confidence_intervals(X_new, model, y_train, X_train):
-    predictions = model.predict(X_new)
-    residuals = y_train - model.predict(X_train)
-    se_residuals = np.std(residuals)
-    ci_range = 1.96 * se_residuals * np.sqrt(1 + 1 / len(X_train))
-    ci = np.array([predictions - ci_range, predictions + ci_range]).T
-    return predictions, ci
+def create_polynomial_features(X):
+    poly_features = np.column_stack([
+        X,
+        X[:, :3] ** 2,
+        np.prod(X[:, :2], axis=1).reshape(-1, 1),
+        np.prod(X[:, [0, 2]], axis=1).reshape(-1, 1),
+        np.prod(X[:, 1:3], axis=1).reshape(-1, 1)
+    ])
+    return poly_features
+
+def predict_with_confidence_intervals(X_new, model, y_train):
+    y_pred = model.predict(X_new)
+    y_cv_pred = cross_val_predict(model, X_new, y_train, cv=5)
+    residuals = y_train - y_cv_pred
+    std_residuals = np.std(residuals)
+    ci = 1.96 * std_residuals / np.sqrt(len(y_train))
+    return y_pred, np.array([y_pred - ci, y_pred + ci]).T
 
 def load_and_preprocess_data():
-    global data, screw_config_encoder, scaler, X_interaction, y_coverage, y_number
+    global data, model_pipeline_coverage, model_pipeline_number, y_coverage, y_number
     
     try:
         data = pd.read_csv('Model_data.csv')
@@ -39,50 +49,38 @@ def load_and_preprocess_data():
         print("Error: Model_data.csv not found!")
         return False
     
-    screw_config_encoder = OneHotEncoder(drop='first', sparse_output=False)
-    screw_config_encoded = screw_config_encoder.fit_transform(data[['Screw_Configuration']])
-    
-    scaler = StandardScaler()
-    scaled_features = scaler.fit_transform(data[['Screw_speed', 'Liquid_content', 'Liquid_binder']])
-    
-    X = np.hstack([scaled_features, screw_config_encoded])
     y_coverage = data['Seed_coverage'].values
     y_number = data['number_seeded'].values
-    
-    # Create interaction and quadratic terms
-    X_interaction = np.column_stack([
-        X,
-        X[:, 0] * X[:, 1],  # Screw_speed * Liquid_content
-        X[:, 0] * X[:, 2],  # Screw_speed * Liquid_binder
-        X[:, 1] * X[:, 2],  # Liquid_content * Liquid_binder
-        X[:, 0]**2,         # Screw_speed^2
-        X[:, 1]**2,         # Liquid_content^2
-        X[:, 2]**2          # Liquid_binder^2
+
+    numeric_features = ['Screw_speed', 'Liquid_content', 'Liquid_binder']
+    categorical_features = ['Screw_Configuration']
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', StandardScaler(), numeric_features),
+            ('cat', OneHotEncoder(drop='first', sparse_output=False), categorical_features)
+        ])
+
+    model_pipeline_coverage = Pipeline([
+        ('preprocessor', preprocessor),
+        ('poly', lambda X: create_polynomial_features(X)),
+        ('regressor', Ridge(alpha=1.0))
     ])
-    
-    print(f"X_interaction shape: {X_interaction.shape}")
-    print(f"y_coverage shape: {y_coverage.shape}")
-    print(f"y_number shape: {y_number.shape}")
-    
+
+    model_pipeline_number = Pipeline([
+        ('preprocessor', preprocessor),
+        ('poly', lambda X: create_polynomial_features(X)),
+        ('regressor', Ridge(alpha=1.0))
+    ])
+
+    model_pipeline_coverage.fit(data[numeric_features + categorical_features], y_coverage)
+    model_pipeline_number.fit(data[numeric_features + categorical_features], y_number)
+
+    print("Models trained successfully")
     return True
 
-def train_or_load_models():
-    global ridge_coverage, ridge_number
-    
-    if os.path.exists('ridge_coverage.joblib') and os.path.exists('ridge_number.joblib'):
-        ridge_coverage = joblib.load('ridge_coverage.joblib')
-        ridge_number = joblib.load('ridge_number.joblib')
-    else:
-        ridge_coverage = RidgeCV(alphas=[0.1, 1.0, 10.0], cv=5).fit(X_interaction, y_coverage)
-        ridge_number = RidgeCV(alphas=[0.1, 1.0, 10.0], cv=5).fit(X_interaction, y_number)
-        joblib.dump(ridge_coverage, 'ridge_coverage.joblib')
-        joblib.dump(ridge_number, 'ridge_number.joblib')
-    
-    print(f"Coverage model coefficients: {ridge_coverage.coef_}")
-    print(f"Number model coefficients: {ridge_number.coef_}")
-
 if load_and_preprocess_data():
-    train_or_load_models()
+    print("Data loaded and models trained successfully")
 else:
     print("Failed to initialize data and models")
 
@@ -96,31 +94,16 @@ def predict():
         input_data = request.get_json(force=True)
         
         features = np.array(input_data['features']).reshape(1, -1)
-        screw_config_input = np.array(input_data['screw_config']).reshape(1, -1)
+        screw_config = input_data['screw_config'][0]
         
         print(f"Input features: {features}")
-        print(f"Input screw config: {screw_config_input}")
+        print(f"Input screw config: {screw_config}")
         
-        features_scaled = scaler.transform(features)
-        screw_config_encoded = screw_config_encoder.transform(screw_config_input)
+        input_df = pd.DataFrame(features, columns=['Screw_speed', 'Liquid_content', 'Liquid_binder'])
+        input_df['Screw_Configuration'] = screw_config
         
-        X_new = np.hstack([features_scaled, screw_config_encoded])
-        
-        # Create interaction and quadratic terms
-        X_interaction_new = np.column_stack([
-            X_new,
-            X_new[:, 0] * X_new[:, 1],  # Screw_speed * Liquid_content
-            X_new[:, 0] * X_new[:, 2],  # Screw_speed * Liquid_binder
-            X_new[:, 1] * X_new[:, 2],  # Liquid_content * Liquid_binder
-            X_new[:, 0]**2,             # Screw_speed^2
-            X_new[:, 1]**2,             # Liquid_content^2
-            X_new[:, 2]**2              # Liquid_binder^2
-        ])
-        
-        print(f"X_interaction_new shape: {X_interaction_new.shape}")
-        
-        coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_interaction_new, ridge_coverage, y_coverage, X_interaction)
-        number_prediction, number_ci = predict_with_confidence_intervals(X_interaction_new, ridge_number, y_number, X_interaction)
+        coverage_prediction, coverage_ci = predict_with_confidence_intervals(input_df, model_pipeline_coverage, y_coverage)
+        number_prediction, number_ci = predict_with_confidence_intervals(input_df, model_pipeline_number, y_number)
         
         # Ensure non-negative predictions and clip coverage to 0-100%
         coverage_prediction = np.clip(coverage_prediction, 0, 100)
@@ -128,14 +111,10 @@ def predict():
         number_prediction = np.maximum(number_prediction, 0)
         number_ci = np.maximum(number_ci, 0)
         
-        # Sanity check: if prediction is zero, use mean of training data
-        if coverage_prediction[0] == 0:
-            coverage_prediction[0] = np.mean(y_coverage)
-        if number_prediction[0] == 0:
-            number_prediction[0] = np.mean(y_number)
-        
         print(f"Coverage prediction: {coverage_prediction}")
+        print(f"Coverage CI: {coverage_ci}")
         print(f"Number prediction: {number_prediction}")
+        print(f"Number CI: {number_ci}")
         
         return jsonify({
             'coverage_prediction': float(coverage_prediction[0]),
@@ -152,21 +131,23 @@ def predict():
 
 @app.route('/feature_importance', methods=['GET'])
 def feature_importance():
-    if ridge_coverage is None or ridge_number is None:
+    if model_pipeline_coverage is None or model_pipeline_number is None:
         return jsonify({"error": "Models not initialized"}), 500
     
-    feature_names = ['Screw_speed', 'Liquid_content', 'Liquid_binder'] + [f'Screw_Config_{cat}' for cat in screw_config_encoder.categories_[0][1:]]
+    preprocessor = model_pipeline_coverage.named_steps['preprocessor']
+    feature_names = (
+        preprocessor.named_transformers_['num'].get_feature_names_out().tolist() +
+        preprocessor.named_transformers_['cat'].get_feature_names_out().tolist()
+    )
     feature_names += [
+        'Screw_speed^2', 'Liquid_content^2', 'Liquid_binder^2',
         'Screw_speed * Liquid_content',
         'Screw_speed * Liquid_binder',
-        'Liquid_content * Liquid_binder',
-        'Screw_speed^2',
-        'Liquid_content^2',
-        'Liquid_binder^2'
+        'Liquid_content * Liquid_binder'
     ]
     
-    coverage_importance = dict(zip(feature_names, ridge_coverage.coef_))
-    number_importance = dict(zip(feature_names, ridge_number.coef_))
+    coverage_importance = dict(zip(feature_names, model_pipeline_coverage.named_steps['regressor'].coef_))
+    number_importance = dict(zip(feature_names, model_pipeline_number.named_steps['regressor'].coef_))
     
     return jsonify({
         'coverage_importance': coverage_importance,
