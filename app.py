@@ -82,7 +82,7 @@ def load_and_preprocess_data():
     print(f"Number model intercept: {model_number.intercept_}")
     return True
 
-def predict_with_confidence_intervals(model, X_new, X_train, y_train, is_coverage=False):
+def predict_with_confidence_intervals(model, X_new, X_train, y_train):
     predictions = model.predict(X_new)
     
     # Use the preprocessed X_train for cross-validation
@@ -103,13 +103,6 @@ def predict_with_confidence_intervals(model, X_new, X_train, y_train, is_coverag
     n = len(y_train)
     ci_range = 1.96 * se_residuals * np.sqrt(1 + 1/n)
     ci = np.array([predictions - ci_range, predictions + ci_range]).T
-
-    if is_coverage:
-        predictions = np.clip(predictions, 0, 100)
-        ci = np.clip(ci, 0, 100)
-    else:
-        predictions = np.maximum(predictions, 0)
-        ci = np.maximum(ci, 0)
 
     return predictions, ci
 
@@ -163,7 +156,7 @@ def predict():
         manual_pred_number = model_number.predict(X_new_interaction)
         print(f"Manual prediction for number: {manual_pred_number}")
         
-        coverage_prediction, coverage_ci = predict_with_confidence_intervals(model_coverage, X_new_interaction, X, y_coverage, is_coverage=True)
+        coverage_prediction, coverage_ci = predict_with_confidence_intervals(model_coverage, X_new_interaction, X, y_coverage)
         number_prediction, number_ci = predict_with_confidence_intervals(model_number, X_new_interaction, X, y_number)
         
         print(f"Raw coverage prediction: {coverage_prediction}")
