@@ -21,6 +21,7 @@ model_pipeline_coverage = None
 model_pipeline_number = None
 y_coverage = None
 y_number = None
+X_train = None
 
 class PolynomialFeatures(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None):
@@ -39,16 +40,16 @@ class PolynomialFeatures(BaseEstimator, TransformerMixin):
         ])
         return poly_features
 
-def predict_with_confidence_intervals(X_new, model, y_train):
+def predict_with_confidence_intervals(X_new, model, X_train, y_train):
     y_pred = model.predict(X_new)
-    y_cv_pred = cross_val_predict(model, X_new, y_train, cv=5)
+    y_cv_pred = cross_val_predict(model, X_train, y_train, cv=5)
     residuals = y_train - y_cv_pred
     std_residuals = np.std(residuals)
     ci = 1.96 * std_residuals / np.sqrt(len(y_train))
     return y_pred, np.array([y_pred - ci, y_pred + ci]).T
 
 def load_and_preprocess_data():
-    global data, model_pipeline_coverage, model_pipeline_number, y_coverage, y_number
+    global data, model_pipeline_coverage, model_pipeline_number, y_coverage, y_number, X_train
     
     try:
         data = pd.read_csv('Model_data.csv')
@@ -81,8 +82,9 @@ def load_and_preprocess_data():
         ('regressor', Ridge(alpha=1.0))
     ])
 
-    model_pipeline_coverage.fit(data[numeric_features + categorical_features], y_coverage)
-    model_pipeline_number.fit(data[numeric_features + categorical_features], y_number)
+    X_train = data[numeric_features + categorical_features]
+    model_pipeline_coverage.fit(X_train, y_coverage)
+    model_pipeline_number.fit(X_train, y_number)
 
     print("Models trained successfully")
     return True
@@ -110,8 +112,8 @@ def predict():
         input_df = pd.DataFrame(features, columns=['Screw_speed', 'Liquid_content', 'Liquid_binder'])
         input_df['Screw_Configuration'] = screw_config
         
-        coverage_prediction, coverage_ci = predict_with_confidence_intervals(input_df, model_pipeline_coverage, y_coverage)
-        number_prediction, number_ci = predict_with_confidence_intervals(input_df, model_pipeline_number, y_number)
+        coverage_prediction, coverage_ci = predict_with_confidence_intervals(input_df, model_pipeline_coverage, X_train, y_coverage)
+        number_prediction, number_ci = predict_with_confidence_intervals(input_df, model_pipeline_number, X_train, y_number)
         
         # Ensure non-negative predictions and clip coverage to 0-100%
         coverage_prediction = np.clip(coverage_prediction, 0, 100)
