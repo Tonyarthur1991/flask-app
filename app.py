@@ -28,6 +28,9 @@ def load_and_preprocess_data():
     try:
         data = pd.read_csv('Model_data.csv')
         print(f"Data loaded successfully. Shape: {data.shape}")
+        print(f"Columns: {data.columns}")
+        print(f"Data types:\n{data.dtypes}")
+        print(f"First few rows:\n{data.head()}")
     except FileNotFoundError:
         print("Error: Model_data.csv not found!")
         return False
@@ -35,6 +38,7 @@ def load_and_preprocess_data():
     # Convert Screw_Configuration to categorical
     data['Screw_Configuration'] = pd.Categorical(data['Screw_Configuration'])
     config_categories = data['Screw_Configuration'].cat.categories.tolist()
+    print(f"Screw Configuration categories: {config_categories}")
 
     # Normalize continuous variables
     continuous_vars = ['Screw_speed', 'Liquid_content', 'Liquid_binder']
@@ -42,6 +46,9 @@ def load_and_preprocess_data():
     data_stds = data[continuous_vars].std()
     for var in continuous_vars:
         data[f'{var}_norm'] = (data[var] - data_means[var]) / data_stds[var]
+    
+    print(f"Means of continuous variables: {data_means}")
+    print(f"Standard deviations of continuous variables: {data_stds}")
 
     # Prepare the data for Lasso
     X = data[['Screw_speed_norm', 'Liquid_content_norm', 'Liquid_binder_norm']]
@@ -60,11 +67,16 @@ def load_and_preprocess_data():
     X['Content_Squared'] = X['Liquid_content_norm'] ** 2
     X['Binder_Squared'] = X['Liquid_binder_norm'] ** 2
 
+    print(f"X shape after adding all features: {X.shape}")
+    print(f"X columns: {X.columns}")
+
     # Apply Lasso Regression
     model_coverage = LassoCV(cv=10).fit(X, y_coverage)
     model_number = LassoCV(cv=10).fit(X, y_number)
 
     print("Models trained successfully")
+    print(f"Coverage model coefficients: {model_coverage.coef_}")
+    print(f"Number model coefficients: {model_number.coef_}")
     return True
 
 def predict_model_lasso_with_ci(model, X_new, X_train, y_train, is_coverage=False):
@@ -107,6 +119,7 @@ def predict():
         
         # Normalize new data
         X_new = (features - data_means.values) / data_stds.values
+        print(f"Normalized input features: {X_new}")
         
         # Create dummy variables for Screw_Configuration
         config_dummy = np.zeros((1, len(config_categories) - 1))
@@ -114,6 +127,7 @@ def predict():
             config_dummy[0, config_categories[1:].index(screw_config)] = 1
         
         X_new = np.hstack([X_new, config_dummy])
+        print(f"X_new after adding config dummy: {X_new}")
         
         # Add interaction terms and quadratic terms
         X_new = np.column_stack([
@@ -126,13 +140,16 @@ def predict():
             X_new[:, 2] ** 2            # Binder^2
         ])
         
+        print(f"Final X_new shape: {X_new.shape}")
+        print(f"Final X_new: {X_new}")
+        
         coverage_prediction, coverage_ci = predict_model_lasso_with_ci(model_coverage, X_new, X, y_coverage, is_coverage=True)
         number_prediction, number_ci = predict_model_lasso_with_ci(model_number, X_new, X, y_number)
         
-        print(f"Coverage prediction: {coverage_prediction}")
-        print(f"Coverage CI: {coverage_ci}")
-        print(f"Number prediction: {number_prediction}")
-        print(f"Number CI: {number_ci}")
+        print(f"Raw coverage prediction: {coverage_prediction}")
+        print(f"Raw coverage CI: {coverage_ci}")
+        print(f"Raw number prediction: {number_prediction}")
+        print(f"Raw number CI: {number_ci}")
         
         return jsonify({
             'coverage_prediction': float(coverage_prediction[0]),
