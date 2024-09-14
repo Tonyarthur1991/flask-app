@@ -68,8 +68,8 @@ def train_or_load_models():
         lasso_coverage = joblib.load('lasso_coverage.joblib')
         lasso_number = joblib.load('lasso_number.joblib')
     else:
-        lasso_coverage = LassoCV(cv=10).fit(X_interaction, y_coverage)
-        lasso_number = LassoCV(cv=10).fit(X_interaction, y_number)
+        lasso_coverage = LassoCV(cv=10, positive=True).fit(X_interaction, y_coverage)
+        lasso_number = LassoCV(cv=10, positive=True).fit(X_interaction, y_number)
         joblib.dump(lasso_coverage, 'lasso_coverage.joblib')
         joblib.dump(lasso_number, 'lasso_number.joblib')
 
@@ -108,12 +108,17 @@ def predict():
         
         coverage_prediction, coverage_ci = predict_with_confidence_intervals(X_interaction_new, lasso_coverage, y_coverage, X_interaction)
         number_prediction, number_ci = predict_with_confidence_intervals(X_interaction_new, lasso_number, y_number, X_interaction)
+        
+        # Ensure non-negative predictions and clip coverage to 0-100%
         coverage_prediction = np.clip(coverage_prediction, 0, 100)
         coverage_ci = np.clip(coverage_ci, 0, 100)
+        number_prediction = np.maximum(number_prediction, 0)
+        number_ci = np.maximum(number_ci, 0)
+        
         return jsonify({
-            'coverage_prediction': coverage_prediction[0],
+            'coverage_prediction': float(coverage_prediction[0]),
             'coverage_ci': coverage_ci[0].tolist(),
-            'number_prediction': number_prediction[0],
+            'number_prediction': float(number_prediction[0]),
             'number_ci': number_ci[0].tolist()
         })
     except Exception as e:
